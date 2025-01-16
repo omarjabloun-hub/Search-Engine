@@ -25,7 +25,13 @@ articles = {}         # { doc_number(str): { "url": "...", "content": "..." } }
 inverted_index = {}   # { token: { doc_number(str): raw_freq OR tf-idf } }
 idf = {}              # { token: idf_value }
 doc_norms = {}        # { doc_number(str): sqrt of sum of TF-IDF^2 for that doc }
-
+smart_schemes = {
+    "ltc": ("logarithmic_tf", "idf", "cosine_normalization"),
+    "lnc": ("logarithmic_tf", "none", "cosine_normalization"),
+    "ntc": ("natural_tf", "idf", "cosine_normalization"),
+    "anc": ("augmented_tf", "none", "cosine_normalization"),
+    # Add other SMART combinations as needed
+}
 stop_words = set(stopwords.words('english'))
 stemmer = PorterStemmer()
 lemmatizer = WordNetLemmatizer()
@@ -93,42 +99,66 @@ def apply_lemmatization_on_tokens(tokens_with_pos: List[tuple]) -> List[str]:
         lemmatized.append(lemmatizer.lemmatize(word, wn_pos))
     return lemmatized
 
+
+def apply_smart_scheme(tf, idf, scheme):
+    """
+    Apply SMART weighting scheme to compute term weighting.
+    """
+    tf_scheme, idf_scheme, normalization_scheme = smart_schemes[scheme]
+
+    # Term Frequency (TF) transformation
+    if tf_scheme == "logarithmic_tf":
+        tf = 1 + math.log(tf)
+    elif tf_scheme == "natural_tf":
+        tf = tf  # No change
+    elif tf_scheme == "augmented_tf":
+        tf = 0.5 + (0.5 * tf / max(tf, 1))
+    elif tf_scheme == "boolean_tf":
+        tf = 1 if tf > 0 else 0
+
+    # Inverse Document Frequency (IDF) transformation
+    if idf_scheme == "idf":
+        tf *= idf
+    elif idf_scheme == "prob_idf":
+        tf *= max(0, math.log(len(inverted_index) / idf))
+
+    # Normalization is handled separately later
+    return tf
+
+
 # ----------------------
 # QUERY PROCESSING
 # ----------------------
-def process_query(query: str, idf_dict: dict, query_scheme : str = "ltc") -> dict:
+def process_query(query, idf, query_scheme):
     """
-    1) Clean and remove stopwords
-    2) Tokenize
-    3) POS tag + lemmatize
-    4) Build a TF-IDF vector for the query
+    Process a query with the given SMART weighting scheme.
     """
     if not isinstance(query, str):
         raise ValueError("Query must be a string.")
 
-    # 1) Clean + remove stopwords
+
     query = clean_text(query)
+
+
     query = remove_stopwords(query)
-    print(query)
-    # 2) Tokenize
+
+
     tokens = word_tokenize(query)
 
-    # 3) POS tagging + lemmatization
-    pos_tags = apply_pos_tagging(tokens)
-    lemmatized = apply_lemmatization_on_tokens(pos_tags)
-    print(lemmatized)
-    # 4) Build query TF-IDF
-    freq_counter = Counter(lemmatized)
-    q_vector = {}
-    print(idf_dict)
-    for term, freq in freq_counter.items():
-        if term in idf_dict:
-            # TF = 1 + log(freq)
-            tf_val = 1 + math.log(freq, 10)
-            # Multiply by IDF
-            q_vector[term] = tf_val * idf_dict[term]
 
-    return q_vector
+    pos_tags = apply_pos_tagging(tokens)
+
+
+    lemmatized_tokens = apply_lemmatization_on_tokens(pos_tags)
+
+    query_tf = Counter(lemmatized_tokens)
+
+    query_vector = {}
+    for term, tf in query_tf.items():
+        if term in idf:
+            query_vector[term] = apply_smart_scheme(tf, idf[term], query_scheme)
+
+    return query_vector
 
 # ----------------------
 # IDF & DOC WEIGHTS
@@ -149,33 +179,24 @@ def compute_idf(inverted_idx: dict, total_docs: int) -> dict:
 # ----------------------
 # COSINE SIMILARITY
 # ----------------------
-def cosine_similarity(query_vector: dict) -> List[tuple]:
+def cosine_similarity(query_vector, doc_scheme):
     """
-    Score all docs by:
-        sum_{t in query} [ (query TF-IDF) * (doc TF-IDF) ] / doc_norm
-    We do not divide by query norm here, but you can if you want.
-
-    doc TF-IDF was precomputed and stored in the global inverted_index (overwritten).
-    doc_norms[doc] = sqrt( sum of doc's (TF-IDF)^2 ).
+    Compute cosine similarity between the query vector and the document vectors
+    using different SMART weighting schemes for query and documents.
     """
     scores = defaultdict(float)
 
-    # 1) Accumulate dot product for each doc
-    for term, q_weight in query_vector.items():
-        # If term is in the inverted_index, then we have doc -> TF-IDF
+    for term, weight in query_vector.items():
         if term in inverted_index:
-            for doc_id, doc_weight in inverted_index[term].items():
-                scores[doc_id] += q_weight * doc_weight
+            for doc, doc_tf in inverted_index[term].items():
+                doc_weight = apply_smart_scheme(doc_tf, idf[term], doc_scheme)
+                scores[doc] += weight * doc_weight
 
-    # 2) Normalize by doc_norm
-    #    doc_norms[doc_id] was computed at startup
-    for doc_id in scores:
-        denominator = doc_norms.get(doc_id, 1e-9)
-        scores[doc_id] /= denominator
+    # Normalize scores using cosine normalization
+    for doc in scores:
+        scores[doc] /= doc_norms[doc]
 
-    # 3) Sort by descending score
-    ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-    return ranked
+    return sorted(scores.items(), key=lambda x: x[1], reverse=True)
 
 # ----------------------
 # FASTAPI EVENTS & ENDPOINTS
@@ -237,7 +258,7 @@ def read_root():
     return {"message": "Wikipedia-based TF-IDF model is ready!"}
 
 @app.get("/search")
-def search(query: str,query_scheme : str = "ltc",  top_k: int = 5):
+def search(query: str,query_scheme : str = "ltc",doc_scheme : str = "lnc",  top_k: int = 5):
     """
     1. process_query => build query TF-IDF vector
     2. cosine_similarity => get doc scores
@@ -245,7 +266,7 @@ def search(query: str,query_scheme : str = "ltc",  top_k: int = 5):
     """
     query_vector = process_query(query, idf, query_scheme)
     print(query_vector)
-    results = cosine_similarity(query_vector)
+    results = cosine_similarity(query_vector,doc_scheme)
 
     top_results = []
     for doc_num, score in results[:top_k]:
@@ -258,7 +279,7 @@ def search(query: str,query_scheme : str = "ltc",  top_k: int = 5):
             "url": url,
             "snippet": content[:150]  # first 150 chars
         })
-
+    print(top_results)
     return {
         "query": query,
         "tokens": query_vector,

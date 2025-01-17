@@ -206,7 +206,7 @@ def startup_event():
     global articles, inverted_index, idf, doc_norms
 
     # 1. Load the articles from JSON
-    with open("articles.json", "r", encoding="utf-8") as f:
+    with open("./articles.json", "r", encoding="utf-8") as f:
         data = json.load(f)
 
     # Convert to dict: { "doc_number": {"url":..., "content":...}, ... }
@@ -218,7 +218,7 @@ def startup_event():
         }
 
     # 2. Load the pre-built inverted index (currently raw freq)
-    with open("inverted_index.json", "r", encoding="utf-8") as f:
+    with open("./inverted_index.json", "r", encoding="utf-8") as f:
         inv_idx = json.load(f)
 
     # 3. Compute IDF for each token

@@ -20,7 +20,7 @@ export async function searchDocuments(
   docScheme: string
 ): Promise<SearchResponse> {
   // Replace this URL with your actual API endpoint
-  const apiUrl = `https://lucky-marginally-squirrel.ngrok-free.app/search?query=${encodeURIComponent(
+  const apiUrl = `http://127.0.0.1:8000/search?query=${encodeURIComponent(
     query
   )}&query_scheme=${encodeURIComponent(queryScheme)}&doc_scheme=${encodeURIComponent(docScheme)}`
   console.log('searchDocuments called with query:', query)

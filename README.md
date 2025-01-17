@@ -15,9 +15,6 @@ Here is a short demo showcasing how the search engine works in real-time. You ca
 
 ![Demo Video](./demo.gif)
 
-
-(Replace ./demo-video.mp4 with the actual path or URL to your recorded video.)
-
 The folder structure looks like this
 The folder structure looks like this:
 
@@ -112,7 +109,7 @@ Below is a high-level overview of the steps taken to process a search query:
 Below is a screenshot of the frontend showing a search for the keyword **“outlier.”** The left side indicates the query scheme (`LNC`) and the right side indicates the document scheme (`NTC`), along with the search results:
 
 
-![alt text]({30F18D48-EA41-4460-B69A-74C9E2C5D65D}.png)
+![alt text](image.png)
 
 ---
 

@@ -13,7 +13,7 @@ This project implements a simple search engine over a collection of Wikipedia ar
 
 Here is a short demo showcasing how the search engine works in real-time. You can see the process of entering a query, selecting query and document schemes, and viewing the results:
 
-![Demo Video](./demo.mp4)
+![Demo Video](./demo.gif)
 
 
 (Replace ./demo-video.mp4 with the actual path or URL to your recorded video.)
